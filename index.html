@@ -1,0 +1,91 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#183153">
+<title>Planning des surveillances</title>
+<style>
+:root{font-family:system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;color:#182230;background:#f4f6f9}
+*{box-sizing:border-box}body{margin:0;padding:18px;display:flex;justify-content:center}
+main{width:100%;max-width:680px;background:white;border-radius:18px;padding:22px;box-shadow:0 8px 28px #14233a12}
+h1{font-size:1.45rem;margin:0 0 6px} .sub{color:#586579;margin:0 0 22px;font-size:.95rem}
+label{display:block;font-weight:650;margin-bottom:8px}input,button{font:inherit;border-radius:10px}
+input{width:100%;padding:13px;border:1px solid #cbd3df;background:#fff;color:inherit}
+button{border:0;padding:12px 15px;font-weight:650;cursor:pointer}
+.primary{background:#183153;color:#fff;width:100%;margin-top:10px}
+.muted{background:#e9eef5;color:#183153}
+.result{margin-top:22px}.status{padding:12px 14px;border-radius:10px;background:#eef4ff;color:#183153;font-weight:650}
+table{border-collapse:collapse;width:100%;margin-top:14px;font-size:.96rem}
+th,td{text-align:left;padding:11px 9px;border-bottom:1px solid #e6eaf0}
+th{color:#536176;font-size:.84rem;font-weight:650}td:first-child{width:58%}
+.actions{display:flex;gap:10px;margin-top:16px;flex-wrap:wrap}.actions button{flex:1}
+.message{white-space:pre-wrap;background:#f5f7fa;padding:13px;border-radius:10px;margin-top:14px;font-size:.9rem}
+.note{font-size:.82rem;color:#667085;margin-top:20px}
+@media(min-width:520px){main{padding:30px}}
+</style>
+</head>
+<body>
+<main>
+  <h1>Planning des surveillances</h1>
+  <p class="sub">Choisissez une date pour afficher les six postes.</p>
+  <form id="form">
+    <label for="date">Date souhaitée</label>
+    <input id="date" name="date" type="date" required>
+    <button class="primary" type="submit">Afficher l’horaire</button>
+  </form>
+  <section id="result" class="result" aria-live="polite"></section>
+  <p class="note">Cycle de 6 jours · Référence : lundi 12 octobre 2026 = jour 1. Pas de surveillance le mercredi ni le week-end.</p>
+</main>
+<script>
+const cycle = [
+  ["PETRA","BARBARA","SHIRIN","MARC","ANNIE","SOMAYA"],
+  ["SOMAYA","PETRA","BARBARA","SHIRIN","MARC","ANNIE"],
+  ["ANNIE","SOMAYA","PETRA","BARBARA","SHIRIN","MARC"],
+  ["MARC","ANNIE","SOMAYA","PETRA","BARBARA","SHIRIN"],
+  ["SHIRIN","MARC","ANNIE","SOMAYA","PETRA","BARBARA"],
+  ["BARBARA","SHIRIN","MARC","ANNIE","SOMAYA","PETRA"]
+];
+const places = ["Pos 1 — Marronnier","Pos 2 — Hêtre","Pos 3 — Montée","Pos 4 — Anciens bacs","Pos 5 — Bac à sable","Pos 6 — WC Bellmerin"];
+const weekdays = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+const fmt = new Intl.DateTimeFormat('fr-BE',{weekday:'long',day:'2-digit',month:'2-digit',year:'numeric',timeZone:'UTC'});
+const dateInput=document.getElementById('date'), result=document.getElementById('result');
+function parseDate(s){const [y,m,d]=s.split('-').map(Number);return new Date(Date.UTC(y,m-1,d));}
+function eligible(d){const w=d.getUTCDay();return w===1||w===2||w===4||w===5;}
+function countEligible(from,to){
+  // Signed count of eligible dates strictly after from and up to to (or reverse).
+  if(from.getTime()===to.getTime()) return 0;
+  const direction=to>from?1:-1; let n=0, d=new Date(from);
+  while(d.getTime()!==to.getTime()){
+    d.setUTCDate(d.getUTCDate()+direction);
+    if(eligible(d)) n+=direction;
+  }
+  return n;
+}
+function show(dateString){
+  if(!dateString){result.innerHTML='';return}
+  const d=parseDate(dateString), ref=new Date(Date.UTC(2026,9,12));
+  const day=d.getUTCDay();
+  if(!eligible(d)){
+    result.innerHTML=`<div class="status">Aucune surveillance le ${fmt.format(d)}.</div>`;
+    return;
+  }
+  const offset=countEligible(ref,d);
+  const cycleDay=((offset%6)+6)%6;
+  const people=cycle[cycleDay];
+  const heading=`Planning du ${fmt.format(d)} — jour ${cycleDay+1}/6`;
+  const rows=places.map((p,i)=>`<tr><td>${p}</td><td><strong>${people[i]}</strong></td></tr>`).join('');
+  const msg=`📅 ${heading}\n${places.map((p,i)=>`${p}: ${people[i]}`).join('\n')}`;
+  result.innerHTML=`<div class="status">${heading}</div><table><thead><tr><th>Poste</th><th>Surveillant(e)</th></tr></thead><tbody>${rows}</tbody></table><div class="actions"><button class="muted" id="copy">Copier le planning</button><button class="muted" id="whatsapp">Ouvrir WhatsApp</button></div><div class="message" id="msg"></div>`;
+  document.getElementById('msg').textContent=msg;
+  document.getElementById('copy').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(msg);document.getElementById('copy').textContent='Copié !'}catch(e){const ta=document.createElement('textarea');ta.value=msg;document.body.appendChild(ta);ta.select();document.execCommand('copy');ta.remove();document.getElementById('copy').textContent='Copié !'}});
+  document.getElementById('whatsapp').addEventListener('click',()=>window.open('https://wa.me/?text='+encodeURIComponent(msg),'_blank','noopener'));
+}
+document.getElementById('form').addEventListener('submit',e=>{e.preventDefault();show(dateInput.value)});
+const params=new URLSearchParams(location.search);
+const initial=params.get('date');
+dateInput.value=initial||new Date().toISOString().slice(0,10);
+show(dateInput.value);
+</script>
+</body>
+</html>
